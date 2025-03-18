@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dự đoán giá nhà</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <h1>Biểu đồ biến động giá nhà qua các năm</h1>
+    <canvas id="housePriceChart"></canvas>
+
+    <div class="container" id="form-container">
+        <h2>Dự đoán giá nhà</h2>
+        <form id="prediction-form">
+            <div>
+                <label for="year_built">Năm xây dựng nhà:</label>
+                <input type="number" id="year_built" name="year_built" required>
+
+                <label for="age_of_house">Tuổi của ngôi nhà:</label>
+                <input type="number" id="age_of_house" name="age_of_house" required>
+
+                <label for="longitude">Kinh độ:</label>
+                <input type="number" step="0.0001" id="longitude" name="longitude" required>
+            </div>
+
+            <div>
+                <label for="num_stores">Số lượng cửa hàng trong khu vực:</label>
+                <input type="number" id="num_stores" name="num_stores" required>
+
+                <label for="distance_to_city_center">Khoảng cách đến trung tâm thành phố (km):</label>
+                <input type="number" step="0.1" id="distance_to_city_center" name="distance_to_city_center" required>
+
+                <label for="latitude">Vĩ độ:</label>
+                <input type="number" step="0.0001" id="latitude" name="latitude" required>
+            </div>
+
+            <button type="submit" id="submit-btn">Dự đoán</button>
+        </form>
+
+        <div id="result-container" style="display:none;">
+            <h3>Thông tin ngôi nhà:</h3>
+            <p><strong>Năm xây dựng:</strong> <span id="year_built_display"></span></p>
+            <p><strong>Tuổi ngôi nhà:</strong> <span id="age_of_house_display"></span></p>
+            <p><strong>Kinh độ:</strong> <span id="longitude_display"></span></p>
+            <p><strong>Số lượng cửa hàng trong khu vực:</strong> <span id="num_stores_display"></span></p>
+            <p><strong>Khoảng cách đến trung tâm thành phố:</strong> <span id="distance_to_city_center_display"></span>
+            </p>
+            <p><strong>Vĩ độ:</strong> <span id="latitude_display"></span></p>
+        </div>
+
+        <div class="comparison-container" id="comparison-container" style="display:none;">
+            <h3>So sánh giá nhà:</h3>
+            <p><strong>Dự đoán giá nhà: </strong><span id="predicted_price_vnd"></span> triệu VND</p>
+            <p><strong>Giá nhà trung bình năm: </strong><span id="avg_price"></span> triệu VND</p>
+            <p><strong>Giá trung bình khu vực: </strong><span id="avg_area_price"></span> triệu VND</p>
+            <p><strong>Chênh lệch so với giá trung bình: </strong><span id="price_difference"></span> triệu VND</p>
+
+            <canvas id="comparisonChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        var dataHome = {{ data_out | tojson }};
+        var ctx = document.getElementById('housePriceChart').getContext('2d');
+        let yearPriceMap = {};
+
+        dataHome.forEach(item => {
+            let year = item[0];
+            let price = item[6];
+            if (yearPriceMap[year]) {
+                yearPriceMap[year].push(price);
+            } else {
+                yearPriceMap[year] = [price];
+            }
+        });
+
+        let groupedData = [];
+        for (let year in yearPriceMap) {
+            let prices = yearPriceMap[year];
+            let averagePrice = prices.reduce((acc, price) => acc + price, 0) / prices.length;
+            groupedData.push({ year: parseInt(year), averagePrice: averagePrice });
+        }
+
+        groupedData.sort((a, b) => a.year - b.year);
+
+        let years = groupedData.map(item => item.year);
+        let prices = groupedData.map(item => item.averagePrice);
+
+        var housePriceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: years,
+                datasets: [{
+                    label: 'Giá nhà theo năm',
+                    data: prices,
+                    fill: false,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Năm'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Giá nhà (Triệu VND)'
+                        },
+                        ticks: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            }
+        });
+
+        document.getElementById('prediction-form').addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+
+            fetch('/', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data)
+
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        document.getElementById('predicted_price_vnd').innerText = data.predicted_price_vnd;
+                        document.getElementById('avg_price').innerText = data.avg_price;
+                        document.getElementById('avg_area_price').innerText = data.avg_area_price;
+                        document.getElementById('price_difference').innerText = data.price_difference;
+
+                        document.getElementById('year_built_display').innerText = data.input_data.year_built;
+                        document.getElementById('age_of_house_display').innerText = data.input_data.age_of_house;
+                        document.getElementById('longitude_display').innerText = data.input_data.longitude;
+                        document.getElementById('num_stores_display').innerText = data.input_data.num_stores;
+                        document.getElementById('distance_to_city_center_display').innerText = data.input_data.distance_to_city_center;
+                        document.getElementById('latitude_display').innerText = data.input_data.latitude;
+
+                        var comparisonChart = document.getElementById('comparisonChart').getContext('2d');
+
+                        predicted_price = parseFloat(data.predicted_price_vnd.replace(",", "").replace(" VND", ""))
+                        avg_prices = parseFloat(data.avg_price.replace(",", "").replace(" VND", ""))
+                        avg_area_prices = parseFloat(data.avg_area_price.replace(",", "").replace(" VND", ""))
+
+                        var comparisonData = {
+                            labels: ['Dự đoán', 'Giá Trung Bình Khu Vực', 'Giá Trung Bình Năm'],
+                            datasets: [{
+                                label: 'So sánh giá nhà',
+                                data: [predicted_price, avg_area_prices, avg_prices],
+                                backgroundColor: ['rgba(75, 192, 192, 0.6)', 'rgba(255, 159, 64, 0.6)', 'rgba(153, 102, 255, 0.6)'],
+                                borderColor: ['rgba(75, 192, 192, 1)', 'rgba(255, 159, 64, 1)', 'rgba(153, 102, 255, 1)'],
+                                borderWidth: 1
+                            }]
+                        };
+
+                        var chart = new Chart(comparisonChart, {
+                            type: 'bar',
+                            data: comparisonData,
+                            options: {
+                                scales: {
+                                    y: {
+                                        beginAtZero: true
+                                    }
+                                }
+                            }
+                        });
+
+                        document.getElementById('result-container').style.display = 'block';
+                        document.getElementById('comparison-container').style.display = 'block';
+
+                        document.getElementById('comparison-container').scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+    </script>
+</body>
+
+</html>
